@@ -1,10 +1,7 @@
 mod file;
 
 use std::env;
-use std::fs;
 use std::io;
-use std::path::{Path, PathBuf};
-use std::vec::Vec;
 
 use structopt::StructOpt;
 
@@ -18,48 +15,40 @@ struct Cli {
     #[structopt(short = "d", long, required = true)]
     dir: String,
 
-    #[structopt(short = "o", long, required = true)]
-    output: String,
+    #[structopt(short = "o", long)]
+    output: Option<String>,
 
     #[structopt(long)]
     depth: Option<u32>,
 
     #[structopt(long)]
-    larger_than_mb: Option<u32>,
+    larger_than_mb: Option<u64>,
 }
 
 fn main() -> io::Result<()> {
     let args = Cli::from_args();
     println!("current executable: {:?}", env::current_exe());
 
-    println!(
-        "pattern:{}, dirs: {}, output: {}",
-        args.pattern, args.dir, args.output
-    );
-
-    let mut result: Vec<file::MyFile> = Vec::new();
-
-    visit_dir(&Path::new(&args.dir), &mut result, 1)?;
-
-    for my_file in result {
-        println!("{:?}", my_file);
+    match &args.output {
+        Some(output) => println!(
+            "pattern:{}, dir: {}, output: {}",
+            args.pattern, args.dir, output
+        ),
+        None => println!("pattern:{}, dir: {}", args.pattern, args.dir),
     }
 
-    Ok(())
-}
+    let mut my_files = file::MyFiles::from_dir(&args.dir);
+    my_files.retain_match_reg_pattern(&args.pattern);
 
-fn visit_dir(dir: &Path, result: &mut Vec<file::MyFile>, depth: u32) -> io::Result<()> {
-    if dir.is_dir() {
-        // ? mark is a kind of error propagation mechanism in Rust
-        for entry in fs::read_dir(dir)? {
-            let entry = entry?;
-            let path = entry.path();
-            if path.is_dir() {
-                visit_dir(&path, result, depth + 1)?;
-            } else {
-                result.push(file::MyFile::from_path(path, depth));
-            }
-        }
+    match args.depth {
+        Some(depth) => my_files.retain_depth_less_than(depth),
+        None => (),
     }
-    Ok(())
+
+    match args.larger_than_mb {
+        Some(size_in_mb) => my_files.retain_size_larger_than(size_in_mb),
+        None => (),
+    }
+
+    my_files.output(args.output)
 }
